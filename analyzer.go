@@ -138,7 +138,7 @@ func processResults(results []FuncResult, noTests bool, over float64, top int) [
 	if noTests {
 		var filtered []FuncResult
 		for _, r := range results {
-			if !strings.HasSuffix(r.File, "_test.go") {
+			if !strings.HasSuffix(r.File, "_test.go") && !strings.HasSuffix(r.File, "_mock.go") {
 				filtered = append(filtered, r)
 			}
 		}
