@@ -134,6 +134,51 @@ func joinResults(complexity []complexityStat, coverage []coverageStat, modulePre
 	return results
 }
 
+func processResults(results []FuncResult, noTests bool, over float64, top int) []FuncResult {
+	if noTests {
+		var filtered []FuncResult
+		for _, r := range results {
+			if !strings.HasSuffix(r.File, "_test.go") {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
+
+	if over > 0 {
+		var filtered []FuncResult
+		for _, r := range results {
+			if r.CRAP > over {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
+
+	if top > 0 && len(results) > top {
+		results = results[:top]
+	}
+
+	return results
+}
+
+func summarize(results []FuncResult) (avgCRAP float64, total, crappy int) {
+	if len(results) == 0 {
+		return 0, 0, 0
+	}
+
+	total = len(results)
+	var sum float64
+	for _, r := range results {
+		sum += r.CRAP
+		if r.IsCrappy(30) {
+			crappy++
+		}
+	}
+	avgCRAP = sum / float64(total)
+	return
+}
+
 func formatResults(results []FuncResult) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location"))

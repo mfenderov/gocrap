@@ -130,6 +130,125 @@ total:					(statements)	22.9%`
 	}
 }
 
+func TestProcessResults_FilterTests(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Handle", File: "agent.go", CRAP: 50},
+		{FuncName: "TestHandle", File: "agent_test.go", CRAP: 40},
+		{FuncName: "Chat", File: "client.go", CRAP: 5},
+	}
+
+	got := processResults(results, true, 0, 0)
+	if len(got) != 2 {
+		t.Fatalf("processResults(noTests=true) returned %d results, want 2", len(got))
+	}
+	if got[0].File != "agent.go" || got[1].File != "client.go" {
+		t.Errorf("unexpected files: %q, %q", got[0].File, got[1].File)
+	}
+}
+
+func TestProcessResults_FilterOver(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Handle", CRAP: 50},
+		{FuncName: "Chat", CRAP: 5},
+		{FuncName: "Run", CRAP: 35},
+	}
+
+	got := processResults(results, false, 30, 0)
+	if len(got) != 2 {
+		t.Fatalf("processResults(over=30) returned %d results, want 2", len(got))
+	}
+}
+
+func TestProcessResults_Top(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "A", CRAP: 50},
+		{FuncName: "B", CRAP: 40},
+		{FuncName: "C", CRAP: 30},
+	}
+
+	got := processResults(results, false, 0, 2)
+	if len(got) != 2 {
+		t.Fatalf("processResults(top=2) returned %d results, want 2", len(got))
+	}
+	if got[0].FuncName != "A" || got[1].FuncName != "B" {
+		t.Errorf("unexpected top 2: %q, %q", got[0].FuncName, got[1].FuncName)
+	}
+}
+
+func TestProcessResults_Combined(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Handle", File: "agent.go", CRAP: 50},
+		{FuncName: "TestA", File: "agent_test.go", CRAP: 100},
+		{FuncName: "Chat", File: "client.go", CRAP: 5},
+		{FuncName: "Run", File: "main.go", CRAP: 35},
+	}
+
+	got := processResults(results, true, 10, 1)
+	if len(got) != 1 {
+		t.Fatalf("processResults(noTests+over+top) returned %d, want 1", len(got))
+	}
+	if got[0].FuncName != "Handle" {
+		t.Errorf("got %q, want Handle", got[0].FuncName)
+	}
+}
+
+func TestSummarize(t *testing.T) {
+	results := []FuncResult{
+		{CRAP: 50},
+		{CRAP: 10},
+		{CRAP: 1},
+	}
+
+	avg, total, crappy := summarize(results)
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if crappy != 1 {
+		t.Errorf("crappy = %d, want 1", crappy)
+	}
+	if math.Abs(avg-20.33) > 0.01 {
+		t.Errorf("avg = %.2f, want 20.33", avg)
+	}
+}
+
+func TestSummarize_Empty(t *testing.T) {
+	avg, total, crappy := summarize(nil)
+	if total != 0 || crappy != 0 || avg != 0 {
+		t.Errorf("summarize(nil) = (%.1f, %d, %d), want (0, 0, 0)", avg, total, crappy)
+	}
+}
+
+func TestDetectModulePrefix(t *testing.T) {
+	comp := []complexityStat{
+		{File: "pkg/ai/agent.go", Line: 10},
+	}
+	cov := []coverageStat{
+		{File: "bambot/pkg/ai/agent.go", Line: 10},
+	}
+
+	got := detectModulePrefix(cov, comp)
+	if got != "bambot/" {
+		t.Errorf("detectModulePrefix() = %q, want %q", got, "bambot/")
+	}
+}
+
+func TestDetectModulePrefix_Empty(t *testing.T) {
+	got := detectModulePrefix(nil, nil)
+	if got != "" {
+		t.Errorf("detectModulePrefix(nil, nil) = %q, want empty", got)
+	}
+}
+
+func TestDetectModulePrefix_NoMatch(t *testing.T) {
+	comp := []complexityStat{{File: "foo.go"}}
+	cov := []coverageStat{{File: "bar.go"}}
+
+	got := detectModulePrefix(cov, comp)
+	if got != "" {
+		t.Errorf("detectModulePrefix(no match) = %q, want empty", got)
+	}
+}
+
 func TestJoinResults(t *testing.T) {
 	complexity := []complexityStat{
 		{FuncName: "(*AgentHandler).Handle", File: "pkg/ai/agent.go", Line: 122, Complexity: 15},
