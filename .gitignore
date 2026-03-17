@@ -1,0 +1,4 @@
+gocrap
+coverage.out
+*.test
+.worktrees/
