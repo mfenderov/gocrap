@@ -86,9 +86,12 @@ func run(opts options, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "\nAverage CRAP: %.1f | Functions: %d | Above 30: %d\n", avg, total, crappy)
 	}
 
-	if opts.threshold > 0 && crappy > 0 {
-		fmt.Fprintf(stderr, "\nFAIL: %d function(s) exceed CRAP threshold %.0f\n", crappy, opts.threshold)
-		return 1
+	if opts.threshold > 0 {
+		exceeding := countExceeding(results, opts.threshold)
+		if exceeding > 0 {
+			fmt.Fprintf(stderr, "\nFAIL: %d function(s) exceed CRAP threshold %.0f\n", exceeding, opts.threshold)
+			return 1
+		}
 	}
 
 	return 0

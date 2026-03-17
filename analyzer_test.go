@@ -249,6 +249,42 @@ func TestDetectModulePrefix_NoMatch(t *testing.T) {
 	}
 }
 
+func TestCountExceeding(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "A", CRAP: 50},
+		{FuncName: "B", CRAP: 35},
+		{FuncName: "C", CRAP: 10},
+		{FuncName: "D", CRAP: 5},
+	}
+
+	tests := []struct {
+		name      string
+		threshold float64
+		want      int
+	}{
+		{"threshold 50 - only above 50", 50, 0},
+		{"threshold 30 - two above 30", 30, 2},
+		{"threshold 10 - two above 10", 10, 2},
+		{"threshold 1 - all four above 1", 1, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countExceeding(results, tt.threshold)
+			if got != tt.want {
+				t.Errorf("countExceeding(threshold=%.0f) = %d, want %d", tt.threshold, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCountExceeding_Empty(t *testing.T) {
+	got := countExceeding(nil, 30)
+	if got != 0 {
+		t.Errorf("countExceeding(nil) = %d, want 0", got)
+	}
+}
+
 func TestJoinResults(t *testing.T) {
 	complexity := []complexityStat{
 		{FuncName: "(*AgentHandler).Handle", File: "pkg/ai/agent.go", Line: 122, Complexity: 15},

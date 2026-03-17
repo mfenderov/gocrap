@@ -179,6 +179,16 @@ func summarize(results []FuncResult) (avgCRAP float64, total, crappy int) {
 	return
 }
 
+func countExceeding(results []FuncResult, threshold float64) int {
+	var count int
+	for _, r := range results {
+		if r.CRAP > threshold {
+			count++
+		}
+	}
+	return count
+}
+
 func formatResults(results []FuncResult) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location"))
