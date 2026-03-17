@@ -28,7 +28,7 @@ func main() {
 
 func parseFlags() options {
 	coverprofile := flag.String("coverprofile", "", "path to Go coverage profile (from go test -coverprofile)")
-	threshold := flag.Float64("threshold", 0, "fail if any function exceeds this CRAP score")
+	threshold := flag.Float64("threshold", 0, "show pass/fail per function and exit 1 if any exceed this CRAP score")
 	over := flag.Float64("over", 0, "only show functions with CRAP score above this value")
 	top := flag.Int("top", 0, "show only the top N worst functions")
 	noTests := flag.Bool("no-tests", false, "exclude test files (*_test.go)")
@@ -79,7 +79,7 @@ func run(opts options, stdout, stderr io.Writer) int {
 
 	results = processResults(results, opts.noTests, opts.over, opts.top)
 
-	fmt.Fprint(stdout, formatResults(results))
+	fmt.Fprint(stdout, formatResults(results, opts.threshold))
 
 	avg, total, crappy := summarize(results)
 	if total > 0 {

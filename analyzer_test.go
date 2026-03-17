@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -282,6 +283,34 @@ func TestCountExceeding_Empty(t *testing.T) {
 	got := countExceeding(nil, 30)
 	if got != 0 {
 		t.Errorf("countExceeding(nil) = %d, want 0", got)
+	}
+}
+
+func TestFormatResults_WithThreshold(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
+		{FuncName: "Parse", File: "main.go", Line: 29, Complexity: 2, Coverage: 100, CRAP: 2.0},
+	}
+
+	output := formatResults(results, 12)
+
+	if !strings.Contains(output, "FAIL") {
+		t.Error("expected FAIL marker for Run (CRAP 42 > threshold 12)")
+	}
+	if !strings.Contains(output, "ok") {
+		t.Error("expected ok marker for Parse (CRAP 2 < threshold 12)")
+	}
+}
+
+func TestFormatResults_NoThreshold(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
+	}
+
+	output := formatResults(results, 0)
+
+	if strings.Contains(output, "FAIL") || strings.Contains(output, "ok") {
+		t.Error("expected no status markers when threshold is 0")
 	}
 }
 

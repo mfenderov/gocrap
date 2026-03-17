@@ -189,19 +189,40 @@ func countExceeding(results []FuncResult, threshold float64) int {
 	return count
 }
 
-func formatResults(results []FuncResult) string {
+func formatResults(results []FuncResult, threshold float64) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location"))
+
+	if threshold > 0 {
+		b.WriteString(fmt.Sprintf("%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location"))
+	} else {
+		b.WriteString(fmt.Sprintf("%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location"))
+	}
 
 	for _, r := range results {
-		b.WriteString(fmt.Sprintf("%-8.1f %-12d %-10s %-40s %s:%d\n",
-			r.CRAP,
-			r.Complexity,
-			fmt.Sprintf("%.1f%%", r.Coverage),
-			r.FuncName,
-			r.File,
-			r.Line,
-		))
+		if threshold > 0 {
+			status := "ok"
+			if r.CRAP > threshold {
+				status = "FAIL"
+			}
+			b.WriteString(fmt.Sprintf("%-6s %-8.1f %-12d %-10s %-40s %s:%d\n",
+				status,
+				r.CRAP,
+				r.Complexity,
+				fmt.Sprintf("%.1f%%", r.Coverage),
+				r.FuncName,
+				r.File,
+				r.Line,
+			))
+		} else {
+			b.WriteString(fmt.Sprintf("%-8.1f %-12d %-10s %-40s %s:%d\n",
+				r.CRAP,
+				r.Complexity,
+				fmt.Sprintf("%.1f%%", r.Coverage),
+				r.FuncName,
+				r.File,
+				r.Line,
+			))
+		}
 	}
 
 	return b.String()
