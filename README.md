@@ -26,7 +26,7 @@ gocrap -coverprofile coverage.out ./...
 | `-threshold N` | Show pass/fail per function, exit 1 if any exceed N (like `go test`) |
 | `-over N` | Only show functions above score N |
 | `-top N` | Show only the N worst functions |
-| `-no-tests` | Exclude `_test.go` and `_mock.go` files |
+| `-exclude PATTERN` | Exclude files matching glob pattern (can be repeated) |
 
 ### Example output
 

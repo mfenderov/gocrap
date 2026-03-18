@@ -12,12 +12,20 @@ import (
 	"github.com/fzipp/gocyclo"
 )
 
+type stringSlice []string
+
+func (s *stringSlice) String() string { return strings.Join(*s, ",") }
+func (s *stringSlice) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
 type options struct {
 	coverprofile string
 	threshold    float64
 	over         float64
 	top          int
-	noTests      bool
+	exclude      []string
 	paths        []string
 }
 
@@ -31,7 +39,8 @@ func parseFlags() options {
 	threshold := flag.Float64("threshold", 0, "show pass/fail per function and exit 1 if any exceed this CRAP score")
 	over := flag.Float64("over", 0, "only show functions with CRAP score above this value")
 	top := flag.Int("top", 0, "show only the top N worst functions")
-	noTests := flag.Bool("no-tests", false, "exclude test files (*_test.go)")
+	var exclude stringSlice
+	flag.Var(&exclude, "exclude", "exclude files matching glob pattern (can be repeated)")
 	flag.Parse()
 
 	paths := flag.Args()
@@ -50,7 +59,7 @@ func parseFlags() options {
 		threshold:    *threshold,
 		over:         *over,
 		top:          *top,
-		noTests:      *noTests,
+		exclude:      exclude,
 		paths:        paths,
 	}
 }
@@ -62,12 +71,22 @@ func run(opts options, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	results, err := analyze(opts)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	printReport(stdout, results, opts.threshold)
+	return checkThreshold(stderr, results, opts.threshold)
+}
+
+func analyze(opts options) ([]FuncResult, error) {
 	compStats := analyzeComplexity(opts.paths)
 
 	covStats, err := analyzeCoverage(opts.coverprofile)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: %v\n", err)
-		return 1
+		return nil, err
 	}
 
 	modulePrefix := detectModulePrefix(covStats, compStats)
@@ -77,23 +96,26 @@ func run(opts options, stdout, stderr io.Writer) int {
 		return results[i].CRAP > results[j].CRAP
 	})
 
-	results = processResults(results, opts.noTests, opts.over, opts.top)
+	return processResults(results, opts.exclude, opts.over, opts.top), nil
+}
 
-	fmt.Fprint(stdout, formatResults(results, opts.threshold))
-
+func printReport(w io.Writer, results []FuncResult, threshold float64) {
+	fmt.Fprint(w, formatResults(results, threshold))
 	avg, total, crappy := summarize(results)
 	if total > 0 {
-		fmt.Fprintf(stdout, "\nAverage CRAP: %.1f | Functions: %d | Above 30: %d\n", avg, total, crappy)
+		fmt.Fprintf(w, "\nAverage CRAP: %.1f | Functions: %d | Above 30: %d\n", avg, total, crappy)
 	}
+}
 
-	if opts.threshold > 0 {
-		exceeding := countExceeding(results, opts.threshold)
-		if exceeding > 0 {
-			fmt.Fprintf(stderr, "\nFAIL: %d function(s) exceed CRAP threshold %.0f\n", exceeding, opts.threshold)
-			return 1
-		}
+func checkThreshold(w io.Writer, results []FuncResult, threshold float64) int {
+	if threshold <= 0 {
+		return 0
 	}
-
+	exceeding := countExceeding(results, threshold)
+	if exceeding > 0 {
+		fmt.Fprintf(w, "\nFAIL: %d function(s) exceed CRAP threshold %.0f\n", exceeding, threshold)
+		return 1
+	}
 	return 0
 }
 
@@ -123,15 +145,20 @@ func detectModulePrefix(covStats []coverageStat, compStats []complexityStat) str
 	if len(covStats) == 0 || len(compStats) == 0 {
 		return ""
 	}
-
 	for _, comp := range compStats {
-		baseName := strings.TrimPrefix(comp.File, "./")
-		for _, cov := range covStats {
-			if strings.HasSuffix(cov.File, baseName) {
-				return strings.TrimSuffix(cov.File, baseName)
-			}
+		if prefix, ok := findPrefix(comp.File, covStats); ok {
+			return prefix
 		}
 	}
-
 	return ""
+}
+
+func findPrefix(compFile string, covStats []coverageStat) (string, bool) {
+	baseName := strings.TrimPrefix(compFile, "./")
+	for _, cov := range covStats {
+		if strings.HasSuffix(cov.File, baseName) {
+			return strings.TrimSuffix(cov.File, baseName), true
+		}
+	}
+	return "", false
 }

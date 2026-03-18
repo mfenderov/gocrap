@@ -93,7 +93,10 @@ func TestParseCoverFunc(t *testing.T) {
 	input := `bambot/pkg/ai/agent.go:73:	NewAgentHandler		75.0%
 bambot/pkg/ai/agent.go:287:	executeToolLoop		76.9%
 bambot/pkg/ai/client_groq.go:25:	NewGroqClient		100.0%
-total:					(statements)	22.9%`
+total:					(statements)	22.9%
+badline
+nocolon	func	notpercent
+file.go:10:	funcName	abc%`
 
 	results, err := parseCoverFunc(input)
 	if err != nil {
@@ -131,19 +134,35 @@ total:					(statements)	22.9%`
 	}
 }
 
-func TestProcessResults_FilterTests(t *testing.T) {
+func TestProcessResults_ExcludeGlob(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Handle", File: "agent.go", CRAP: 50},
 		{FuncName: "TestHandle", File: "agent_test.go", CRAP: 40},
+		{FuncName: "MockChat", File: "client_mock.go", CRAP: 10},
 		{FuncName: "Chat", File: "client.go", CRAP: 5},
 	}
 
-	got := processResults(results, true, 0, 0)
+	got := processResults(results, []string{"*_test.go", "*_mock.go"}, 0, 0)
 	if len(got) != 2 {
-		t.Fatalf("processResults(noTests=true) returned %d results, want 2", len(got))
+		t.Fatalf("processResults(exclude test+mock) returned %d results, want 2", len(got))
 	}
 	if got[0].File != "agent.go" || got[1].File != "client.go" {
 		t.Errorf("unexpected files: %q, %q", got[0].File, got[1].File)
+	}
+}
+
+func TestProcessResults_ExcludeDirectory(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Handle", File: "pkg/handler.go", CRAP: 50},
+		{FuncName: "Gen", File: "generated/types.go", CRAP: 10},
+	}
+
+	got := processResults(results, []string{"generated/*"}, 0, 0)
+	if len(got) != 1 {
+		t.Fatalf("processResults(exclude dir) returned %d results, want 1", len(got))
+	}
+	if got[0].FuncName != "Handle" {
+		t.Errorf("got %q, want Handle", got[0].FuncName)
 	}
 }
 
@@ -154,7 +173,7 @@ func TestProcessResults_FilterOver(t *testing.T) {
 		{FuncName: "Run", CRAP: 35},
 	}
 
-	got := processResults(results, false, 30, 0)
+	got := processResults(results, nil, 30, 0)
 	if len(got) != 2 {
 		t.Fatalf("processResults(over=30) returned %d results, want 2", len(got))
 	}
@@ -167,7 +186,7 @@ func TestProcessResults_Top(t *testing.T) {
 		{FuncName: "C", CRAP: 30},
 	}
 
-	got := processResults(results, false, 0, 2)
+	got := processResults(results, nil, 0, 2)
 	if len(got) != 2 {
 		t.Fatalf("processResults(top=2) returned %d results, want 2", len(got))
 	}
@@ -184,9 +203,9 @@ func TestProcessResults_Combined(t *testing.T) {
 		{FuncName: "Run", File: "main.go", CRAP: 35},
 	}
 
-	got := processResults(results, true, 10, 1)
+	got := processResults(results, []string{"*_test.go"}, 10, 1)
 	if len(got) != 1 {
-		t.Fatalf("processResults(noTests+over+top) returned %d, want 1", len(got))
+		t.Fatalf("processResults(exclude+over+top) returned %d, want 1", len(got))
 	}
 	if got[0].FuncName != "Handle" {
 		t.Errorf("got %q, want Handle", got[0].FuncName)

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -42,59 +43,59 @@ func CRAPScore(complexity int, coveragePct float64) float64 {
 
 func parseCoverFunc(output string) ([]coverageStat, error) {
 	var results []coverageStat
-
 	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "total:") {
-			continue
+		if stat, ok := parseCoverLine(line); ok {
+			results = append(results, stat)
 		}
+	}
+	return results, nil
+}
 
-		// Format: file:line:\tfuncName\tcoverage%
-		colonIdx := strings.LastIndex(line, ":")
-		if colonIdx == -1 {
-			continue
-		}
-
-		// Split on tabs to get fields
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-
-		// Parse file:line from first field
-		fileLine := fields[0]
-		// Remove trailing colon
-		fileLine = strings.TrimSuffix(fileLine, ":")
-
-		lastColon := strings.LastIndex(fileLine, ":")
-		if lastColon == -1 {
-			continue
-		}
-
-		file := fileLine[:lastColon]
-		lineNum, err := strconv.Atoi(fileLine[lastColon+1:])
-		if err != nil {
-			continue
-		}
-
-		funcName := fields[1]
-
-		// Parse coverage percentage (last field, remove %)
-		covStr := strings.TrimSuffix(fields[len(fields)-1], "%")
-		cov, err := strconv.ParseFloat(covStr, 64)
-		if err != nil {
-			continue
-		}
-
-		results = append(results, coverageStat{
-			File:     file,
-			Line:     lineNum,
-			FuncName: funcName,
-			Coverage: cov,
-		})
+func parseCoverLine(line string) (coverageStat, bool) {
+	line = strings.TrimSpace(line)
+	if skipCoverLine(line) {
+		return coverageStat{}, false
 	}
 
-	return results, nil
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return coverageStat{}, false
+	}
+
+	file, lineNum, ok := parseFileLine(fields[0])
+	if !ok {
+		return coverageStat{}, false
+	}
+
+	cov, ok := parseCoverage(fields[len(fields)-1])
+	if !ok {
+		return coverageStat{}, false
+	}
+
+	return coverageStat{File: file, Line: lineNum, FuncName: fields[1], Coverage: cov}, true
+}
+
+func skipCoverLine(line string) bool {
+	return line == "" || strings.HasPrefix(line, "total:")
+}
+
+func parseCoverage(field string) (float64, bool) {
+	covStr := strings.TrimSuffix(field, "%")
+	cov, err := strconv.ParseFloat(covStr, 64)
+	return cov, err == nil
+}
+
+func parseFileLine(field string) (string, int, bool) {
+	field = strings.TrimSuffix(field, ":")
+	lastColon := strings.LastIndex(field, ":")
+	if lastColon == -1 {
+		return "", 0, false
+	}
+	lineNum, err := strconv.Atoi(field[lastColon+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return field[:lastColon], lineNum, true
 }
 
 func joinResults(complexity []complexityStat, coverage []coverageStat, modulePrefix string) []FuncResult {
@@ -134,32 +135,39 @@ func joinResults(complexity []complexityStat, coverage []coverageStat, modulePre
 	return results
 }
 
-func processResults(results []FuncResult, noTests bool, over float64, top int) []FuncResult {
-	if noTests {
-		var filtered []FuncResult
-		for _, r := range results {
-			if !strings.HasSuffix(r.File, "_test.go") && !strings.HasSuffix(r.File, "_mock.go") {
-				filtered = append(filtered, r)
-			}
-		}
-		results = filtered
-	}
-
-	if over > 0 {
-		var filtered []FuncResult
-		for _, r := range results {
-			if r.CRAP > over {
-				filtered = append(filtered, r)
-			}
-		}
-		results = filtered
-	}
-
+func processResults(results []FuncResult, exclude []string, over float64, top int) []FuncResult {
+	results = filterExcluded(results, exclude)
+	results = filterOver(results, over)
 	if top > 0 && len(results) > top {
 		results = results[:top]
 	}
-
 	return results
+}
+
+func filterExcluded(results []FuncResult, exclude []string) []FuncResult {
+	if len(exclude) == 0 {
+		return results
+	}
+	var filtered []FuncResult
+	for _, r := range results {
+		if !matchesAny(r.File, exclude) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+func filterOver(results []FuncResult, over float64) []FuncResult {
+	if over <= 0 {
+		return results
+	}
+	var filtered []FuncResult
+	for _, r := range results {
+		if r.CRAP > over {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }
 
 func summarize(results []FuncResult) (avgCRAP float64, total, crappy int) {
@@ -179,6 +187,19 @@ func summarize(results []FuncResult) (avgCRAP float64, total, crappy int) {
 	return
 }
 
+func matchesAny(file string, patterns []string) bool {
+	base := filepath.Base(file)
+	for _, p := range patterns {
+		if matched, _ := filepath.Match(p, file); matched {
+			return true
+		}
+		if matched, _ := filepath.Match(p, base); matched {
+			return true
+		}
+	}
+	return false
+}
+
 func countExceeding(results []FuncResult, threshold float64) int {
 	var count int
 	for _, r := range results {
@@ -191,39 +212,26 @@ func countExceeding(results []FuncResult, threshold float64) int {
 
 func formatResults(results []FuncResult, threshold float64) string {
 	var b strings.Builder
-
 	if threshold > 0 {
-		b.WriteString(fmt.Sprintf("%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location"))
+		fmt.Fprintf(&b, "%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location")
 	} else {
-		b.WriteString(fmt.Sprintf("%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location"))
+		fmt.Fprintf(&b, "%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location")
 	}
-
 	for _, r := range results {
-		if threshold > 0 {
-			status := "ok"
-			if r.CRAP > threshold {
-				status = "FAIL"
-			}
-			b.WriteString(fmt.Sprintf("%-6s %-8.1f %-12d %-10s %-40s %s:%d\n",
-				status,
-				r.CRAP,
-				r.Complexity,
-				fmt.Sprintf("%.1f%%", r.Coverage),
-				r.FuncName,
-				r.File,
-				r.Line,
-			))
-		} else {
-			b.WriteString(fmt.Sprintf("%-8.1f %-12d %-10s %-40s %s:%d\n",
-				r.CRAP,
-				r.Complexity,
-				fmt.Sprintf("%.1f%%", r.Coverage),
-				r.FuncName,
-				r.File,
-				r.Line,
-			))
-		}
+		formatRow(&b, r, threshold)
 	}
-
 	return b.String()
+}
+
+func formatRow(b *strings.Builder, r FuncResult, threshold float64) {
+	cov := fmt.Sprintf("%.1f%%", r.Coverage)
+	if threshold > 0 {
+		status := "ok"
+		if r.CRAP > threshold {
+			status = "FAIL"
+		}
+		fmt.Fprintf(b, "%-6s %-8.1f %-12d %-10s %-40s %s:%d\n", status, r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+	} else {
+		fmt.Fprintf(b, "%-8.1f %-12d %-10s %-40s %s:%d\n", r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+	}
 }

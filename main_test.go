@@ -69,7 +69,7 @@ func TestParseFlags(t *testing.T) {
 	}()
 
 	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	os.Args = []string{"gocrap", "-coverprofile", "test.out", "-threshold", "12", "-no-tests", "./..."}
+	os.Args = []string{"gocrap", "-coverprofile", "test.out", "-threshold", "12", "-exclude", "*_test.go", "-exclude", "*_mock.go", "./..."}
 
 	opts := parseFlags()
 
@@ -79,8 +79,8 @@ func TestParseFlags(t *testing.T) {
 	if opts.threshold != 12 {
 		t.Errorf("threshold = %f, want 12", opts.threshold)
 	}
-	if !opts.noTests {
-		t.Error("noTests = false, want true")
+	if len(opts.exclude) != 2 || opts.exclude[0] != "*_test.go" || opts.exclude[1] != "*_mock.go" {
+		t.Errorf("exclude = %v, want [*_test.go, *_mock.go]", opts.exclude)
 	}
 	if len(opts.paths) != 1 || opts.paths[0] != "." {
 		t.Errorf("paths = %v, want [\".\"] (./... should be trimmed)", opts.paths)
