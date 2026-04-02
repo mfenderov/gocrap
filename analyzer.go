@@ -111,7 +111,6 @@ func joinResults(complexity []complexityStat, coverage []coverageStat, modulePre
 
 	var results []FuncResult
 	for _, comp := range complexity {
-		// Normalize: gocyclo uses relative paths, cover uses module-prefixed paths
 		covFile := modulePrefix + comp.File
 		cov, found := covMap[key{file: covFile, line: comp.Line}]
 
@@ -135,15 +134,6 @@ func joinResults(complexity []complexityStat, coverage []coverageStat, modulePre
 	return results
 }
 
-func processResults(results []FuncResult, exclude []string, over float64, top int) []FuncResult {
-	results = filterExcluded(results, exclude)
-	results = filterOver(results, over)
-	if top > 0 && len(results) > top {
-		results = results[:top]
-	}
-	return results
-}
-
 func filterExcluded(results []FuncResult, exclude []string) []FuncResult {
 	if len(exclude) == 0 {
 		return results
@@ -157,30 +147,20 @@ func filterExcluded(results []FuncResult, exclude []string) []FuncResult {
 	return filtered
 }
 
-func filterOver(results []FuncResult, over float64) []FuncResult {
-	if over <= 0 {
-		return results
-	}
-	var filtered []FuncResult
-	for _, r := range results {
-		if r.CRAP > over {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
-}
-
-func summarize(results []FuncResult) (avgCRAP float64, total, crappy int) {
+func summarize(results []FuncResult, max float64) (avgCRAP float64, total, exceeding int) {
 	if len(results) == 0 {
 		return 0, 0, 0
+	}
+	if max <= 0 {
+		max = 30
 	}
 
 	total = len(results)
 	var sum float64
 	for _, r := range results {
 		sum += r.CRAP
-		if r.IsCrappy(30) {
-			crappy++
+		if r.CRAP > max {
+			exceeding++
 		}
 	}
 	avgCRAP = sum / float64(total)
@@ -200,41 +180,53 @@ func matchesAny(file string, patterns []string) bool {
 	return false
 }
 
-func countExceeding(results []FuncResult, threshold float64) int {
+func countExceeding(results []FuncResult, max float64) int {
 	var count int
 	for _, r := range results {
-		if r.CRAP > threshold {
+		if r.CRAP > max {
 			count++
 		}
 	}
 	return count
 }
 
-func formatResults(results []FuncResult, threshold float64) string {
+func formatResults(results []FuncResult, max float64, verbose bool) string {
 	if len(results) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	if threshold > 0 {
-		fmt.Fprintf(&b, "%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location")
-	} else {
-		fmt.Fprintf(&b, "%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location")
-	}
 	for _, r := range results {
-		formatRow(&b, r, threshold)
+		formatRow(&b, r, max, verbose)
 	}
-	return b.String()
+	if b.Len() == 0 {
+		return ""
+	}
+	var out strings.Builder
+	writeHeader(&out, max)
+	out.WriteString(b.String())
+	return out.String()
 }
 
-func formatRow(b *strings.Builder, r FuncResult, threshold float64) {
-	cov := fmt.Sprintf("%.1f%%", r.Coverage)
-	if threshold > 0 {
-		status := "ok"
-		if r.CRAP > threshold {
-			status = "FAIL"
-		}
-		fmt.Fprintf(b, "%-6s %-8.1f %-12d %-10s %-40s %s:%d\n", status, r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+func writeHeader(b *strings.Builder, max float64) {
+	if max > 0 {
+		fmt.Fprintf(b, "%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location")
 	} else {
-		fmt.Fprintf(b, "%-8.1f %-12d %-10s %-40s %s:%d\n", r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+		fmt.Fprintf(b, "%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location")
 	}
+}
+
+func formatRow(b *strings.Builder, r FuncResult, max float64, verbose bool) {
+	cov := fmt.Sprintf("%.1f%%", r.Coverage)
+	if max <= 0 {
+		fmt.Fprintf(b, "%-8.1f %-12d %-10s %-40s %s:%d\n", r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+		return
+	}
+	status := "ok"
+	if r.CRAP > max {
+		status = "FAIL"
+	}
+	if !verbose && status == "ok" {
+		return
+	}
+	fmt.Fprintf(b, "%-6s %-8.1f %-12d %-10s %-40s %s:%d\n", status, r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
 }

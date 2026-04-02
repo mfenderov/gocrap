@@ -13,48 +13,13 @@ func TestCRAPScore(t *testing.T) {
 		coverage   float64
 		wantCRAP   float64
 	}{
-		{
-			name:       "perfect: complexity 1, 100% coverage",
-			complexity: 1,
-			coverage:   100.0,
-			wantCRAP:   1.0,
-		},
-		{
-			name:       "simple uncovered: complexity 1, 0% coverage",
-			complexity: 1,
-			coverage:   0.0,
-			wantCRAP:   2.0, // 1*1*(1-0)^3 + 1 = 1 + 1 = 2
-		},
-		{
-			name:       "complex well-tested: complexity 10, 100% coverage",
-			complexity: 10,
-			coverage:   100.0,
-			wantCRAP:   10.0, // 100*(1-1)^3 + 10 = 0 + 10 = 10
-		},
-		{
-			name:       "complex untested: complexity 10, 0% coverage",
-			complexity: 10,
-			coverage:   0.0,
-			wantCRAP:   110.0, // 100*(1-0)^3 + 10 = 100 + 10 = 110
-		},
-		{
-			name:       "moderate: complexity 5, 50% coverage",
-			complexity: 5,
-			coverage:   50.0,
-			wantCRAP:   8.125, // 25*(0.5)^3 + 5 = 25*0.125 + 5 = 3.125 + 5 = 8.125
-		},
-		{
-			name:       "threshold boundary: complexity 15, 40% coverage",
-			complexity: 15,
-			coverage:   40.0,
-			wantCRAP:   63.6, // 225*(0.6)^3 + 15 = 225*0.216 + 15 = 48.6 + 15 = 63.6
-		},
-		{
-			name:       "zero complexity",
-			complexity: 0,
-			coverage:   0.0,
-			wantCRAP:   0.0,
-		},
+		{"perfect: complexity 1, 100% coverage", 1, 100.0, 1.0},
+		{"simple uncovered: complexity 1, 0% coverage", 1, 0.0, 2.0},
+		{"complex well-tested: complexity 10, 100% coverage", 10, 100.0, 10.0},
+		{"complex untested: complexity 10, 0% coverage", 10, 0.0, 110.0},
+		{"moderate: complexity 5, 50% coverage", 5, 50.0, 8.125},
+		{"threshold boundary: complexity 15, 40% coverage", 15, 40.0, 63.6},
+		{"zero complexity", 0, 0.0, 0.0},
 	}
 
 	for _, tt := range tests {
@@ -134,7 +99,7 @@ file.go:10:	funcName	abc%`
 	}
 }
 
-func TestProcessResults_ExcludeGlob(t *testing.T) {
+func TestFilterExcluded_Glob(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Handle", File: "agent.go", CRAP: 50},
 		{FuncName: "TestHandle", File: "agent_test.go", CRAP: 40},
@@ -142,73 +107,35 @@ func TestProcessResults_ExcludeGlob(t *testing.T) {
 		{FuncName: "Chat", File: "client.go", CRAP: 5},
 	}
 
-	got := processResults(results, []string{"*_test.go", "*_mock.go"}, 0, 0)
+	got := filterExcluded(results, []string{"*_test.go", "*_mock.go"})
 	if len(got) != 2 {
-		t.Fatalf("processResults(exclude test+mock) returned %d results, want 2", len(got))
+		t.Fatalf("filterExcluded(test+mock) returned %d results, want 2", len(got))
 	}
 	if got[0].File != "agent.go" || got[1].File != "client.go" {
 		t.Errorf("unexpected files: %q, %q", got[0].File, got[1].File)
 	}
 }
 
-func TestProcessResults_ExcludeDirectory(t *testing.T) {
+func TestFilterExcluded_Directory(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Handle", File: "pkg/handler.go", CRAP: 50},
 		{FuncName: "Gen", File: "generated/types.go", CRAP: 10},
 	}
 
-	got := processResults(results, []string{"generated/*"}, 0, 0)
+	got := filterExcluded(results, []string{"generated/*"})
 	if len(got) != 1 {
-		t.Fatalf("processResults(exclude dir) returned %d results, want 1", len(got))
+		t.Fatalf("filterExcluded(dir) returned %d results, want 1", len(got))
 	}
 	if got[0].FuncName != "Handle" {
 		t.Errorf("got %q, want Handle", got[0].FuncName)
 	}
 }
 
-func TestProcessResults_FilterOver(t *testing.T) {
-	results := []FuncResult{
-		{FuncName: "Handle", CRAP: 50},
-		{FuncName: "Chat", CRAP: 5},
-		{FuncName: "Run", CRAP: 35},
-	}
-
-	got := processResults(results, nil, 30, 0)
+func TestFilterExcluded_NoPatterns(t *testing.T) {
+	results := []FuncResult{{FuncName: "A"}, {FuncName: "B"}}
+	got := filterExcluded(results, nil)
 	if len(got) != 2 {
-		t.Fatalf("processResults(over=30) returned %d results, want 2", len(got))
-	}
-}
-
-func TestProcessResults_Top(t *testing.T) {
-	results := []FuncResult{
-		{FuncName: "A", CRAP: 50},
-		{FuncName: "B", CRAP: 40},
-		{FuncName: "C", CRAP: 30},
-	}
-
-	got := processResults(results, nil, 0, 2)
-	if len(got) != 2 {
-		t.Fatalf("processResults(top=2) returned %d results, want 2", len(got))
-	}
-	if got[0].FuncName != "A" || got[1].FuncName != "B" {
-		t.Errorf("unexpected top 2: %q, %q", got[0].FuncName, got[1].FuncName)
-	}
-}
-
-func TestProcessResults_Combined(t *testing.T) {
-	results := []FuncResult{
-		{FuncName: "Handle", File: "agent.go", CRAP: 50},
-		{FuncName: "TestA", File: "agent_test.go", CRAP: 100},
-		{FuncName: "Chat", File: "client.go", CRAP: 5},
-		{FuncName: "Run", File: "main.go", CRAP: 35},
-	}
-
-	got := processResults(results, []string{"*_test.go"}, 10, 1)
-	if len(got) != 1 {
-		t.Fatalf("processResults(exclude+over+top) returned %d, want 1", len(got))
-	}
-	if got[0].FuncName != "Handle" {
-		t.Errorf("got %q, want Handle", got[0].FuncName)
+		t.Errorf("filterExcluded(nil) returned %d, want 2", len(got))
 	}
 }
 
@@ -219,32 +146,36 @@ func TestSummarize(t *testing.T) {
 		{CRAP: 1},
 	}
 
-	avg, total, crappy := summarize(results)
+	avg, total, exceeding := summarize(results, 30)
 	if total != 3 {
 		t.Errorf("total = %d, want 3", total)
 	}
-	if crappy != 1 {
-		t.Errorf("crappy = %d, want 1", crappy)
+	if exceeding != 1 {
+		t.Errorf("exceeding = %d, want 1", exceeding)
 	}
 	if math.Abs(avg-20.33) > 0.01 {
 		t.Errorf("avg = %.2f, want 20.33", avg)
 	}
 }
 
+func TestSummarize_CustomMax(t *testing.T) {
+	results := []FuncResult{{CRAP: 50}, {CRAP: 10}, {CRAP: 1}}
+	_, _, exceeding := summarize(results, 5)
+	if exceeding != 2 {
+		t.Errorf("exceeding(max=5) = %d, want 2", exceeding)
+	}
+}
+
 func TestSummarize_Empty(t *testing.T) {
-	avg, total, crappy := summarize(nil)
-	if total != 0 || crappy != 0 || avg != 0 {
-		t.Errorf("summarize(nil) = (%.1f, %d, %d), want (0, 0, 0)", avg, total, crappy)
+	avg, total, exceeding := summarize(nil, 30)
+	if total != 0 || exceeding != 0 || avg != 0 {
+		t.Errorf("summarize(nil) = (%.1f, %d, %d), want (0, 0, 0)", avg, total, exceeding)
 	}
 }
 
 func TestDetectModulePrefix(t *testing.T) {
-	comp := []complexityStat{
-		{File: "pkg/ai/agent.go", Line: 10},
-	}
-	cov := []coverageStat{
-		{File: "bambot/pkg/ai/agent.go", Line: 10},
-	}
+	comp := []complexityStat{{File: "pkg/ai/agent.go", Line: 10}}
+	cov := []coverageStat{{File: "bambot/pkg/ai/agent.go", Line: 10}}
 
 	got := detectModulePrefix(cov, comp)
 	if got != "bambot/" {
@@ -253,8 +184,7 @@ func TestDetectModulePrefix(t *testing.T) {
 }
 
 func TestDetectModulePrefix_Empty(t *testing.T) {
-	got := detectModulePrefix(nil, nil)
-	if got != "" {
+	if got := detectModulePrefix(nil, nil); got != "" {
 		t.Errorf("detectModulePrefix(nil, nil) = %q, want empty", got)
 	}
 }
@@ -262,9 +192,7 @@ func TestDetectModulePrefix_Empty(t *testing.T) {
 func TestDetectModulePrefix_NoMatch(t *testing.T) {
 	comp := []complexityStat{{File: "foo.go"}}
 	cov := []coverageStat{{File: "bar.go"}}
-
-	got := detectModulePrefix(cov, comp)
-	if got != "" {
+	if got := detectModulePrefix(cov, comp); got != "" {
 		t.Errorf("detectModulePrefix(no match) = %q, want empty", got)
 	}
 }
@@ -278,68 +206,84 @@ func TestCountExceeding(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		threshold float64
-		want      int
+		name string
+		max  float64
+		want int
 	}{
-		{"threshold 50 - only above 50", 50, 0},
-		{"threshold 30 - two above 30", 30, 2},
-		{"threshold 10 - two above 10", 10, 2},
-		{"threshold 1 - all four above 1", 1, 4},
+		{"max 50 - none above", 50, 0},
+		{"max 30 - two above", 30, 2},
+		{"max 10 - two above", 10, 2},
+		{"max 1 - all four above", 1, 4},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := countExceeding(results, tt.threshold)
-			if got != tt.want {
-				t.Errorf("countExceeding(threshold=%.0f) = %d, want %d", tt.threshold, got, tt.want)
+			if got := countExceeding(results, tt.max); got != tt.want {
+				t.Errorf("countExceeding(max=%.0f) = %d, want %d", tt.max, got, tt.want)
 			}
 		})
 	}
 }
 
 func TestCountExceeding_Empty(t *testing.T) {
-	got := countExceeding(nil, 30)
-	if got != 0 {
+	if got := countExceeding(nil, 30); got != 0 {
 		t.Errorf("countExceeding(nil) = %d, want 0", got)
 	}
 }
 
 func TestFormatResults_Empty(t *testing.T) {
-	output := formatResults(nil, 0)
-	if strings.Contains(output, "CRAP") {
-		t.Error("expected no header for empty results")
-	}
-	if output != "" {
+	if output := formatResults(nil, 0, false); output != "" {
 		t.Errorf("expected empty string, got %q", output)
 	}
 }
 
-func TestFormatResults_WithThreshold(t *testing.T) {
+func TestFormatResults_DefaultOnlyViolations(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
 		{FuncName: "Parse", File: "main.go", Line: 29, Complexity: 2, Coverage: 100, CRAP: 2.0},
 	}
 
-	output := formatResults(results, 12)
+	output := formatResults(results, 12, false)
 
 	if !strings.Contains(output, "FAIL") {
-		t.Error("expected FAIL marker for Run (CRAP 42 > threshold 12)")
+		t.Error("expected FAIL marker for Run (CRAP 42 > max 12)")
 	}
-	if !strings.Contains(output, "ok") {
-		t.Error("expected ok marker for Parse (CRAP 2 < threshold 12)")
+	if strings.Contains(output, "ok") {
+		t.Error("expected no ok markers in default mode (only violations shown)")
+	}
+	if strings.Contains(output, "Parse") {
+		t.Error("expected Parse to be hidden in default mode (CRAP 2 < max 12)")
 	}
 }
 
-func TestFormatResults_NoThreshold(t *testing.T) {
+func TestFormatResults_VerboseShowsAll(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
+		{FuncName: "Parse", File: "main.go", Line: 29, Complexity: 2, Coverage: 100, CRAP: 2.0},
+	}
+
+	output := formatResults(results, 12, true)
+
+	if !strings.Contains(output, "FAIL") {
+		t.Error("expected FAIL marker in verbose mode")
+	}
+	if !strings.Contains(output, "ok") {
+		t.Error("expected ok markers in verbose mode")
+	}
+	if !strings.Contains(output, "Parse") {
+		t.Error("expected Parse to be shown in verbose mode")
+	}
+}
+
+func TestFormatResults_NoMax(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
 	}
 
-	output := formatResults(results, 0)
+	output := formatResults(results, 0, false)
 
 	if strings.Contains(output, "FAIL") || strings.Contains(output, "ok") {
-		t.Error("expected no status markers when threshold is 0")
+		t.Error("expected no status markers when max is 0")
 	}
 }
 
@@ -362,8 +306,6 @@ func TestJoinResults(t *testing.T) {
 		t.Fatalf("joinResults() returned %d results, want 3", len(results))
 	}
 
-	// Handle: complexity 15, coverage 32.5%
-	// CRAP = 15^2 * (1 - 0.325)^3 + 15 = 225 * 0.307 + 15 = 69.09 + 15 = 84.09
 	if results[0].FuncName != "(*AgentHandler).Handle" {
 		t.Errorf("results[0].FuncName = %q, want %q", results[0].FuncName, "(*AgentHandler).Handle")
 	}
@@ -373,13 +315,9 @@ func TestJoinResults(t *testing.T) {
 	if math.Abs(results[0].Coverage-32.5) > 0.01 {
 		t.Errorf("results[0].Coverage = %.1f, want 32.5", results[0].Coverage)
 	}
-
-	// NewGroqClient: complexity 3, coverage 100% → CRAP = 3
 	if math.Abs(results[1].CRAP-3.0) > 0.01 {
 		t.Errorf("results[1].CRAP = %.3f, want 3.0", results[1].CRAP)
 	}
-
-	// Chat: complexity 1, coverage 100% → CRAP = 1
 	if math.Abs(results[2].CRAP-1.0) > 0.01 {
 		t.Errorf("results[2].CRAP = %.3f, want 1.0", results[2].CRAP)
 	}

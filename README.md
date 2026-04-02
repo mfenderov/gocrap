@@ -14,42 +14,47 @@ go install github.com/mfenderov/gocrap@latest
 # Generate a coverage profile first
 go test -coverprofile=coverage.out ./...
 
-# Run gocrap
-gocrap -coverprofile coverage.out ./...
+# Show only violations (default) — like go test
+gocrap -c coverage.out -max 12 ./...
+
+# Show all functions — like go test -v
+gocrap -c coverage.out -max 12 -v ./...
+
+# Explore without a threshold (shows everything, no pass/fail)
+gocrap -c coverage.out ./...
 ```
 
 ### Flags
 
 | Flag | Description |
 |------|-------------|
-| `-coverprofile` | Path to coverage profile (required) |
-| `-threshold N` | Show pass/fail per function, exit 1 if any exceed N (like `go test`) |
-| `-over N` | Only show functions above score N |
-| `-top N` | Show only the N worst functions |
+| `-c` / `-coverprofile` | Path to coverage profile (required) |
+| `-max N` | Max allowed CRAP score — show violations and exit 1 if any exceed |
+| `-v` | Show all functions, not just violations |
 | `-exclude PATTERN` | Exclude files matching glob pattern (can be repeated) |
 
 ### Example output
 
-Without threshold:
+Default (`-max 12`):
 ```
-CRAP     Complexity   Coverage   Function                                 Location
-84.1     15           32.5%      (*AgentHandler).Handle                   pkg/ai/agent.go:122
-3.0      3            100.0%     NewGroqClient                            pkg/ai/client_groq.go:25
-1.0      1            100.0%     Chat                                     pkg/ai/client_groq.go:42
+       CRAP     Complexity   Coverage   Function                                 Location
+FAIL   84.1     15           32.5%      (*AgentHandler).Handle                   pkg/ai/agent.go:122
 
-Average CRAP: 29.4 | Functions: 3 | Above 30: 1
+Average CRAP: 29.4 | Functions: 3 | Above 12: 1
+
+FAIL: 1 function(s) exceed max CRAP score 12
 ```
 
-With `-threshold 12` (like `go test`):
+Verbose (`-max 12 -v`):
 ```
        CRAP     Complexity   Coverage   Function                                 Location
 FAIL   84.1     15           32.5%      (*AgentHandler).Handle                   pkg/ai/agent.go:122
 ok     3.0      3            100.0%     NewGroqClient                            pkg/ai/client_groq.go:25
 ok     1.0      1            100.0%     Chat                                     pkg/ai/client_groq.go:42
 
-Average CRAP: 29.4 | Functions: 3 | Above 30: 1
+Average CRAP: 29.4 | Functions: 3 | Above 12: 1
 
-FAIL: 1 function(s) exceed CRAP threshold 12
+FAIL: 1 function(s) exceed max CRAP score 12
 ```
 
 ## CRAP Formula
