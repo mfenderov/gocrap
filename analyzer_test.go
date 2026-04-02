@@ -305,6 +305,16 @@ func TestCountExceeding_Empty(t *testing.T) {
 	}
 }
 
+func TestFormatResults_Empty(t *testing.T) {
+	output := formatResults(nil, 0)
+	if strings.Contains(output, "CRAP") {
+		t.Error("expected no header for empty results")
+	}
+	if output != "" {
+		t.Errorf("expected empty string, got %q", output)
+	}
+}
+
 func TestFormatResults_WithThreshold(t *testing.T) {
 	results := []FuncResult{
 		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},

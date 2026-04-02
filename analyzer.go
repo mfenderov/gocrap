@@ -211,6 +211,9 @@ func countExceeding(results []FuncResult, threshold float64) int {
 }
 
 func formatResults(results []FuncResult, threshold float64) string {
+	if len(results) == 0 {
+		return ""
+	}
 	var b strings.Builder
 	if threshold > 0 {
 		fmt.Fprintf(&b, "%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location")
