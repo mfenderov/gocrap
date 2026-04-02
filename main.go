@@ -100,11 +100,13 @@ func analyze(opts options) ([]FuncResult, error) {
 }
 
 func printReport(w io.Writer, results []FuncResult, threshold float64) {
+	if len(results) == 0 {
+		fmt.Fprintln(w, "No CRAP found.")
+		return
+	}
 	fmt.Fprint(w, formatResults(results, threshold))
 	avg, total, crappy := summarize(results)
-	if total > 0 {
-		fmt.Fprintf(w, "\nAverage CRAP: %.1f | Functions: %d | Above 30: %d\n", avg, total, crappy)
-	}
+	fmt.Fprintf(w, "\nAverage CRAP: %.1f | Functions: %d | Above 30: %d\n", avg, total, crappy)
 }
 
 func checkThreshold(w io.Writer, results []FuncResult, threshold float64) int {

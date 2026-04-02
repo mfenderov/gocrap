@@ -2,3 +2,5 @@ gocrap
 coverage.out
 *.test
 .worktrees/
+.idea/
+.claude/
