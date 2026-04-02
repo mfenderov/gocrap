@@ -151,9 +151,6 @@ func summarize(results []FuncResult, max float64) (avgCRAP float64, total, excee
 	if len(results) == 0 {
 		return 0, 0, 0
 	}
-	if max <= 0 {
-		max = 30
-	}
 
 	total = len(results)
 	var sum float64
