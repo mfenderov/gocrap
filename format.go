@@ -81,7 +81,7 @@ func formatResultsJSON(results []FuncResult, max float64) string {
 			Complexity: r.Complexity,
 			Coverage:   r.Coverage,
 			CRAP:       r.CRAP,
-			Fails:      max > 0 && r.CRAP > max,
+			Fails:      isFailing(r.CRAP, max),
 		}
 	}
 
@@ -102,4 +102,8 @@ func formatResultsJSON(results []FuncResult, max float64) string {
 		return ""
 	}
 	return string(data)
+}
+
+func isFailing(crap, max float64) bool {
+	return max > 0 && crap > max
 }

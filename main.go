@@ -89,18 +89,9 @@ func analyze(opts options) ([]FuncResult, error) {
 		return nil, err
 	}
 
-	sourceFiles, err := findSourceFiles(opts.paths)
+	functions, err := extractAllFunctions(opts.paths)
 	if err != nil {
 		return nil, err
-	}
-
-	var functions []functionRange
-	for _, f := range sourceFiles {
-		fns, err := extractFunctions(f)
-		if err != nil {
-			return nil, err
-		}
-		functions = append(functions, fns...)
 	}
 
 	covStats := computeCoverage(profile, functions)

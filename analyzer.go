@@ -28,6 +28,11 @@ type coverageStat struct {
 	Coverage float64
 }
 
+type covKey struct {
+	file string
+	line int
+}
+
 func CRAPScore(complexity int, coveragePct float64) float64 {
 	comp := float64(complexity)
 	uncov := 1.0 - coveragePct/100.0
@@ -35,40 +40,19 @@ func CRAPScore(complexity int, coveragePct float64) float64 {
 }
 
 func joinResults(complexity []complexityStat, coverage []coverageStat) []FuncResult {
-	type key struct {
-		file string
-		line int
-	}
-
-	covMap := make(map[key]coverageStat, len(coverage))
+	covMap := make(map[covKey]coverageStat, len(coverage))
 	for _, c := range coverage {
-		covMap[key{file: c.File, line: c.Line}] = c
+		covMap[covKey{file: c.File, line: c.Line}] = c
 	}
 
 	var results []FuncResult
 	for _, comp := range complexity {
-		normFile := normalizePath(comp.File)
-		var cov coverageStat
-		var found bool
-		for k, c := range covMap {
-			if k.line != comp.Line {
-				continue
-			}
-			normK := normalizePath(k.file)
-			if normK == normFile || strings.HasSuffix(normK, "/"+normFile) {
-				cov = c
-				found = true
-				break
-			}
-		}
-
+		cov, found := lookupCov(covMap, comp.File, comp.Line)
 		var coveragePct float64
 		if found {
 			coveragePct = cov.Coverage
 		}
-
 		crapScore := CRAPScore(comp.Complexity, coveragePct)
-
 		results = append(results, FuncResult{
 			FuncName:   comp.FuncName,
 			File:       comp.File,
@@ -78,8 +62,21 @@ func joinResults(complexity []complexityStat, coverage []coverageStat) []FuncRes
 			CRAP:       crapScore,
 		})
 	}
-
 	return results
+}
+
+func lookupCov(covMap map[covKey]coverageStat, file string, line int) (coverageStat, bool) {
+	normFile := normalizePath(file)
+	for k, c := range covMap {
+		if k.line != line {
+			continue
+		}
+		normK := normalizePath(k.file)
+		if normK == normFile || strings.HasSuffix(normK, "/"+normFile) {
+			return c, true
+		}
+	}
+	return coverageStat{}, false
 }
 
 func filterExcluded(results []FuncResult, exclude []string) []FuncResult {

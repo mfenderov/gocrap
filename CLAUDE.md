@@ -37,17 +37,21 @@ go test -coverprofile=coverage.out ./... && go run . -c coverage.out -max 5 -exc
 Flat single-package (`main`) CLI with three source files:
 
 - **`main.go`** — CLI flags (`stringSlice` for repeated `-exclude`), orchestration (`run` → `analyze` → `printReport` → `checkMax`)
-- **`analyzer.go`** — Pure domain logic: CRAP formula, coverage parser (`parseCoverFunc` → `parseCoverLine` → `parseFileLine`), result joining, filtering (`filterExcluded`), formatting (`formatResults` → `formatRow`)
+- **`analyzer.go`** — Core domain: types, CRAP formula, result joining (`joinResults` → `lookupCov`), filtering (`filterExcluded`), summarizing, path normalization
+- **`coverage.go`** — Coverage parsing (`parseCoverProfile` → `parseCoverSegment` → `parsePos`), computation (`computeCoverage` → `functionCoverage` → `countStmts`), segment matching (`segmentsForFile` → `findSegmentsBySuffix`)
+- **`format.go`** — Output formatting: text (`formatResults` → `formatRow` → `writeHeader`) and JSON (`formatResultsJSON` → `isFailing`)
+- **`functions.go`** — Source file discovery (`findSourceFiles` → `walkSourceDir` → `walkVisitor`), AST function extraction (`extractFunctions` → `isFuncDecl`), aggregated extraction (`extractAllFunctions`)
 - **`main_test.go`** / **`analyzer_test.go`** — Integration and unit tests
 
 ### Data pipeline
 
 ```
-gocyclo.Analyze(paths) → []complexityStat
-go tool cover -func    → parseCoverFunc() → []coverageStat
-                         detectModulePrefix() → findPrefix() → path prefix
-                         joinResults() by (file, line) → []FuncResult
-                         sort → filterExcluded → formatResults → summarize
+gocyclo.Analyze(paths)      → []complexityStat
+parseCoverProfile(cover.out) → map[string][]coverSegment
+extractAllFunctions(paths)   → []functionRange
+computeCoverage(profile, fns) → []coverageStat
+joinResults(comp, cov)       → []FuncResult  (suffix-based file matching)
+sort → filterExcluded → formatResults/formatResultsJSON → summarize
 ```
 
 ### Key design decisions

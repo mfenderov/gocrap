@@ -26,7 +26,7 @@ func extractFunctions(filePath string) ([]functionRange, error) {
 	var functions []functionRange
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+		if !isFuncDecl(ok, fn) {
 			continue
 		}
 		name := funcName(fn)
@@ -38,6 +38,10 @@ func extractFunctions(filePath string) ([]functionRange, error) {
 		})
 	}
 	return functions, nil
+}
+
+func isFuncDecl(ok bool, fn *ast.FuncDecl) bool {
+	return ok && fn.Body != nil
 }
 
 func funcName(fn *ast.FuncDecl) string {
@@ -58,6 +62,22 @@ func receiverName(expr ast.Expr) string {
 	}
 }
 
+func extractAllFunctions(paths []string) ([]functionRange, error) {
+	sourceFiles, err := findSourceFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	var functions []functionRange
+	for _, f := range sourceFiles {
+		fns, err := extractFunctions(f)
+		if err != nil {
+			return nil, err
+		}
+		functions = append(functions, fns...)
+	}
+	return functions, nil
+}
+
 func findSourceFiles(paths []string) ([]string, error) {
 	var files []string
 	seen := map[string]bool{}
@@ -70,29 +90,57 @@ func findSourceFiles(paths []string) ([]string, error) {
 }
 
 func walkSourceDir(root string, files *[]string, seen map[string]bool) error {
-	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			switch entry.Name() {
-			case ".git", "vendor", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			return nil
-		}
-		rel, _ := filepath.Rel(root, path)
-		if rel == "" {
-			rel = path
-		}
-		rel = filepath.ToSlash(rel)
-		if !seen[rel] {
-			seen[rel] = true
-			*files = append(*files, rel)
-		}
+	v := &walkVisitor{root: root, files: files, seen: seen}
+	return filepath.WalkDir(root, v.visit)
+}
+
+type walkVisitor struct {
+	root  string
+	files *[]string
+	seen  map[string]bool
+}
+
+func (v *walkVisitor) visit(path string, entry os.DirEntry, err error) error {
+	if err != nil {
+		return err
+	}
+	if entry.IsDir() {
+		return v.handleDir(entry)
+	}
+	if !isGoSource(entry) {
 		return nil
-	})
+	}
+	return v.addFile(path)
+}
+
+func (v *walkVisitor) handleDir(entry os.DirEntry) error {
+	if isSkipDir(entry.Name()) {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+func (v *walkVisitor) addFile(path string) error {
+	rel, _ := filepath.Rel(v.root, path)
+	if rel == "" {
+		rel = path
+	}
+	rel = filepath.ToSlash(rel)
+	if !v.seen[rel] {
+		v.seen[rel] = true
+		*v.files = append(*v.files, rel)
+	}
+	return nil
+}
+
+func isSkipDir(name string) bool {
+	switch name {
+	case ".git", "vendor", "testdata":
+		return true
+	}
+	return false
+}
+
+func isGoSource(entry os.DirEntry) bool {
+	return strings.HasSuffix(entry.Name(), ".go") && !strings.HasSuffix(entry.Name(), "_test.go")
 }
