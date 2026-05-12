@@ -62,37 +62,37 @@ func findSourceFiles(paths []string) ([]string, error) {
 	var files []string
 	seen := map[string]bool{}
 	for _, root := range paths {
-		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if entry.IsDir() {
-				switch entry.Name() {
-				case ".git", "vendor", "testdata":
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(entry.Name(), ".go") {
-				return nil
-			}
-			if strings.HasSuffix(entry.Name(), "_test.go") {
-				return nil
-			}
-			rel, _ := filepath.Rel(root, path)
-			if rel == "" {
-				rel = path
-			}
-			rel = filepath.ToSlash(rel)
-			if !seen[rel] {
-				seen[rel] = true
-				files = append(files, rel)
-			}
-			return nil
-		})
-		if err != nil {
+		if err := walkSourceDir(root, &files, seen); err != nil {
 			return nil, err
 		}
 	}
 	return files, nil
+}
+
+func walkSourceDir(root string, files *[]string, seen map[string]bool) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "vendor", "testdata":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, path)
+		if rel == "" {
+			rel = path
+		}
+		rel = filepath.ToSlash(rel)
+		if !seen[rel] {
+			seen[rel] = true
+			*files = append(*files, rel)
+		}
+		return nil
+	})
 }
