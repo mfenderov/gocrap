@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -17,10 +15,6 @@ type FuncResult struct {
 	CRAP       float64
 }
 
-func (f FuncResult) IsCrappy(threshold float64) bool {
-	return f.CRAP >= threshold
-}
-
 type complexityStat struct {
 	FuncName   string
 	File       string
@@ -31,7 +25,6 @@ type complexityStat struct {
 type coverageStat struct {
 	File     string
 	Line     int
-	FuncName string
 	Coverage float64
 }
 
@@ -41,64 +34,7 @@ func CRAPScore(complexity int, coveragePct float64) float64 {
 	return comp*comp*math.Pow(uncov, 3) + comp
 }
 
-func parseCoverFunc(output string) ([]coverageStat, error) {
-	var results []coverageStat
-	for _, line := range strings.Split(output, "\n") {
-		if stat, ok := parseCoverLine(line); ok {
-			results = append(results, stat)
-		}
-	}
-	return results, nil
-}
-
-func parseCoverLine(line string) (coverageStat, bool) {
-	line = strings.TrimSpace(line)
-	if skipCoverLine(line) {
-		return coverageStat{}, false
-	}
-
-	fields := strings.Fields(line)
-	if len(fields) < 3 {
-		return coverageStat{}, false
-	}
-
-	file, lineNum, ok := parseFileLine(fields[0])
-	if !ok {
-		return coverageStat{}, false
-	}
-
-	cov, ok := parseCoverage(fields[len(fields)-1])
-	if !ok {
-		return coverageStat{}, false
-	}
-
-	return coverageStat{File: file, Line: lineNum, FuncName: fields[1], Coverage: cov}, true
-}
-
-func skipCoverLine(line string) bool {
-	return line == "" || strings.HasPrefix(line, "total:")
-}
-
-func parseCoverage(field string) (float64, bool) {
-	covStr := strings.TrimSuffix(field, "%")
-	cov, err := strconv.ParseFloat(covStr, 64)
-	return cov, err == nil
-}
-
-func parseFileLine(field string) (string, int, bool) {
-	field = strings.TrimSuffix(field, ":")
-	lastColon := strings.LastIndex(field, ":")
-	if lastColon == -1 {
-		return "", 0, false
-	}
-	lineNum, err := strconv.Atoi(field[lastColon+1:])
-	if err != nil {
-		return "", 0, false
-	}
-	return field[:lastColon], lineNum, true
-}
-
-func joinResults(complexity []complexityStat, coverage []coverageStat, modulePrefix string) []FuncResult {
+func joinResults(complexity []complexityStat, coverage []coverageStat) []FuncResult {
 	type key struct {
 		file string
 		line int
@@ -111,8 +47,20 @@ func joinResults(complexity []complexityStat, coverage []coverageStat, modulePre
 
 	var results []FuncResult
 	for _, comp := range complexity {
-		covFile := modulePrefix + comp.File
-		cov, found := covMap[key{file: covFile, line: comp.Line}]
+		normFile := normalizePath(comp.File)
+		var cov coverageStat
+		var found bool
+		for k, c := range covMap {
+			if k.line != comp.Line {
+				continue
+			}
+			normK := normalizePath(k.file)
+			if normK == normFile || strings.HasSuffix(normK, "/"+normFile) {
+				cov = c
+				found = true
+				break
+			}
+		}
 
 		var coveragePct float64
 		if found {
@@ -187,43 +135,6 @@ func countExceeding(results []FuncResult, max float64) int {
 	return count
 }
 
-func formatResults(results []FuncResult, max float64, verbose bool) string {
-	if len(results) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range results {
-		formatRow(&b, r, max, verbose)
-	}
-	if b.Len() == 0 {
-		return ""
-	}
-	var out strings.Builder
-	writeHeader(&out, max)
-	out.WriteString(b.String())
-	return out.String()
-}
-
-func writeHeader(b *strings.Builder, max float64) {
-	if max > 0 {
-		fmt.Fprintf(b, "%-6s %-8s %-12s %-10s %-40s %s\n", "", "CRAP", "Complexity", "Coverage", "Function", "Location")
-	} else {
-		fmt.Fprintf(b, "%-8s %-12s %-10s %-40s %s\n", "CRAP", "Complexity", "Coverage", "Function", "Location")
-	}
-}
-
-func formatRow(b *strings.Builder, r FuncResult, max float64, verbose bool) {
-	cov := fmt.Sprintf("%.1f%%", r.Coverage)
-	if max <= 0 {
-		fmt.Fprintf(b, "%-8.1f %-12d %-10s %-40s %s:%d\n", r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
-		return
-	}
-	status := "ok"
-	if r.CRAP > max {
-		status = "FAIL"
-	}
-	if !verbose && status == "ok" {
-		return
-	}
-	fmt.Fprintf(b, "%-6s %-8.1f %-12d %-10s %-40s %s:%d\n", status, r.CRAP, r.Complexity, cov, r.FuncName, r.File, r.Line)
+func normalizePath(path string) string {
+	return strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
 }

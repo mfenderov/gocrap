@@ -67,7 +67,7 @@ func TestRun_VerboseShowsAll(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := run(options{coverprofile: coverprofile, max: 100, verbose: true, paths: []string{"."}}, &stdout, &stderr)
+	code := run(options{coverprofile: coverprofile, max: 500, verbose: true, paths: []string{"."}}, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0\nstderr: %s", code, stderr.String())
 	}

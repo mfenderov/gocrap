@@ -2,6 +2,8 @@ package main
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,73 +31,6 @@ func TestCRAPScore(t *testing.T) {
 				t.Errorf("CRAPScore(%d, %.1f) = %.3f, want %.3f", tt.complexity, tt.coverage, got, tt.wantCRAP)
 			}
 		})
-	}
-}
-
-func TestFuncResult_IsCrappy(t *testing.T) {
-	tests := []struct {
-		name      string
-		crap      float64
-		threshold float64
-		want      bool
-	}{
-		{"below threshold", 10.0, 30.0, false},
-		{"at threshold", 30.0, 30.0, true},
-		{"above threshold", 42.0, 30.0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := FuncResult{CRAP: tt.crap}
-			if got := f.IsCrappy(tt.threshold); got != tt.want {
-				t.Errorf("FuncResult{CRAP: %.1f}.IsCrappy(%.1f) = %v, want %v", tt.crap, tt.threshold, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseCoverFunc(t *testing.T) {
-	input := `bambot/pkg/ai/agent.go:73:	NewAgentHandler		75.0%
-bambot/pkg/ai/agent.go:287:	executeToolLoop		76.9%
-bambot/pkg/ai/client_groq.go:25:	NewGroqClient		100.0%
-total:					(statements)	22.9%
-badline
-nocolon	func	notpercent
-file.go:10:	funcName	abc%`
-
-	results, err := parseCoverFunc(input)
-	if err != nil {
-		t.Fatalf("parseCoverFunc() error = %v", err)
-	}
-
-	if len(results) != 3 {
-		t.Fatalf("parseCoverFunc() returned %d results, want 3", len(results))
-	}
-
-	want := []struct {
-		file     string
-		line     int
-		funcName string
-		coverage float64
-	}{
-		{"bambot/pkg/ai/agent.go", 73, "NewAgentHandler", 75.0},
-		{"bambot/pkg/ai/agent.go", 287, "executeToolLoop", 76.9},
-		{"bambot/pkg/ai/client_groq.go", 25, "NewGroqClient", 100.0},
-	}
-
-	for i, w := range want {
-		if results[i].File != w.file {
-			t.Errorf("result[%d].File = %q, want %q", i, results[i].File, w.file)
-		}
-		if results[i].Line != w.line {
-			t.Errorf("result[%d].Line = %d, want %d", i, results[i].Line, w.line)
-		}
-		if results[i].FuncName != w.funcName {
-			t.Errorf("result[%d].FuncName = %q, want %q", i, results[i].FuncName, w.funcName)
-		}
-		if math.Abs(results[i].Coverage-w.coverage) > 0.01 {
-			t.Errorf("result[%d].Coverage = %.1f, want %.1f", i, results[i].Coverage, w.coverage)
-		}
 	}
 }
 
@@ -170,30 +105,6 @@ func TestSummarize_Empty(t *testing.T) {
 	avg, total, exceeding := summarize(nil, 30)
 	if total != 0 || exceeding != 0 || avg != 0 {
 		t.Errorf("summarize(nil) = (%.1f, %d, %d), want (0, 0, 0)", avg, total, exceeding)
-	}
-}
-
-func TestDetectModulePrefix(t *testing.T) {
-	comp := []complexityStat{{File: "pkg/ai/agent.go", Line: 10}}
-	cov := []coverageStat{{File: "bambot/pkg/ai/agent.go", Line: 10}}
-
-	got := detectModulePrefix(cov, comp)
-	if got != "bambot/" {
-		t.Errorf("detectModulePrefix() = %q, want %q", got, "bambot/")
-	}
-}
-
-func TestDetectModulePrefix_Empty(t *testing.T) {
-	if got := detectModulePrefix(nil, nil); got != "" {
-		t.Errorf("detectModulePrefix(nil, nil) = %q, want empty", got)
-	}
-}
-
-func TestDetectModulePrefix_NoMatch(t *testing.T) {
-	comp := []complexityStat{{File: "foo.go"}}
-	cov := []coverageStat{{File: "bar.go"}}
-	if got := detectModulePrefix(cov, comp); got != "" {
-		t.Errorf("detectModulePrefix(no match) = %q, want empty", got)
 	}
 }
 
@@ -295,12 +206,12 @@ func TestJoinResults(t *testing.T) {
 	}
 
 	coverage := []coverageStat{
-		{File: "bambot/pkg/ai/agent.go", Line: 122, FuncName: "Handle", Coverage: 32.5},
-		{File: "bambot/pkg/ai/client_groq.go", Line: 25, FuncName: "NewGroqClient", Coverage: 100.0},
-		{File: "bambot/pkg/ai/client_groq.go", Line: 42, FuncName: "Chat", Coverage: 100.0},
+		{File: "bambot/pkg/ai/agent.go", Line: 122, Coverage: 32.5},
+		{File: "bambot/pkg/ai/client_groq.go", Line: 25, Coverage: 100.0},
+		{File: "bambot/pkg/ai/client_groq.go", Line: 42, Coverage: 100.0},
 	}
 
-	results := joinResults(complexity, coverage, "bambot/")
+	results := joinResults(complexity, coverage)
 
 	if len(results) != 3 {
 		t.Fatalf("joinResults() returned %d results, want 3", len(results))
@@ -320,5 +231,209 @@ func TestJoinResults(t *testing.T) {
 	}
 	if math.Abs(results[2].CRAP-1.0) > 0.01 {
 		t.Errorf("results[2].CRAP = %.3f, want 1.0", results[2].CRAP)
+	}
+}
+
+func TestFormatResultsJSON(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
+		{FuncName: "Parse", File: "main.go", Line: 29, Complexity: 2, Coverage: 100, CRAP: 2.0},
+	}
+
+	output := formatResultsJSON(results, 12)
+
+	if !strings.Contains(output, `"function"`) {
+		t.Error("expected JSON with function field")
+	}
+	if !strings.Contains(output, `"crap"`) {
+		t.Error("expected JSON with crap field")
+	}
+	if !strings.Contains(output, `"average_crap"`) {
+		t.Error("expected JSON summary with average_crap")
+	}
+	if !strings.Contains(output, "true") {
+		t.Error("expected at least one fails:true for Run (CRAP 42 > max 12)")
+	}
+}
+
+func TestFormatResultsJSON_NoMax(t *testing.T) {
+	results := []FuncResult{
+		{FuncName: "Run", File: "main.go", Line: 58, Complexity: 6, Coverage: 0, CRAP: 42.0},
+	}
+
+	output := formatResultsJSON(results, 0)
+
+	if strings.Contains(output, "true") {
+		t.Error("expected no fails:true when max is 0")
+	}
+}
+
+func TestFormatResultsJSON_Empty(t *testing.T) {
+	output := formatResultsJSON(nil, 12)
+
+	if !strings.Contains(output, `"results"`) {
+		t.Error("expected JSON with results array")
+	}
+	if !strings.Contains(output, `"total_functions": 0`) {
+		t.Error("expected zero total_functions for empty input")
+	}
+}
+
+func TestParseCoverProfile(t *testing.T) {
+	input := "mode: set\nbambot/pkg/ai/agent.go:73.2,74.3 1 1\nbambot/pkg/ai/agent.go:73.2,74.3 2 0\nbambot/pkg/ai/client_groq.go:25.2,26.3 1 1\n\n"
+	profile, err := parseCoverProfile(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("parseCoverProfile() error = %v", err)
+	}
+	if len(profile) != 2 {
+		t.Fatalf("parseCoverProfile() returned %d files, want 2", len(profile))
+	}
+
+	wantAgent := 2
+	if got := len(profile["bambot/pkg/ai/agent.go"]); got != wantAgent {
+		t.Errorf("profile['bambot/pkg/ai/agent.go'] has %d segments, want %d", got, wantAgent)
+	}
+
+	seg := profile["bambot/pkg/ai/agent.go"][0]
+	if seg.StartLine != 73 || seg.EndLine != 74 {
+		t.Errorf("segment range = (%d,%d), want (73,74)", seg.StartLine, seg.EndLine)
+	}
+	if seg.Statements != 1 || seg.Count != 1 {
+		t.Errorf("segment (statements, count) = (%d,%d), want (1,1)", seg.Statements, seg.Count)
+	}
+
+	seg2 := profile["bambot/pkg/ai/agent.go"][1]
+	if seg2.Statements != 2 || seg2.Count != 0 {
+		t.Errorf("segment2 (statements, count) = (%d,%d), want (2,0)", seg2.Statements, seg2.Count)
+	}
+}
+
+func TestExtractFunctions(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "calc.go")
+	code := `package main
+
+func Add(x, y int) int {
+	return x + y
+}
+
+func (c *Calc) Multiply(a, b int) int {
+	return a * b
+}
+`
+	if err := os.WriteFile(src, []byte(code), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	functions, err := extractFunctions(src)
+	if err != nil {
+		t.Fatalf("extractFunctions() error = %v", err)
+	}
+
+	if len(functions) != 2 {
+		t.Fatalf("extractFunctions() returned %d functions, want 2", len(functions))
+	}
+
+	if functions[0].Name != "Add" {
+		t.Errorf("functions[0].Name = %q, want Add", functions[0].Name)
+	}
+	if functions[0].StartLine < 3 || functions[0].EndLine < 5 {
+		t.Errorf("Add range should span lines 3-5, got %d-%d", functions[0].StartLine, functions[0].EndLine)
+	}
+
+	if functions[1].StartLine < 7 || functions[1].EndLine < 9 {
+		t.Errorf("Multiply range should span around lines 7-9, got %d-%d", functions[1].StartLine, functions[1].EndLine)
+	}
+	if functions[1].Name != "Calc.Multiply" {
+		t.Errorf("functions[1].Name = %q, want Calc.Multiply", functions[1].Name)
+	}
+}
+
+func TestExtractFunctions_NoFunctions(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "empty.go")
+	if err := os.WriteFile(src, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	functions, err := extractFunctions(src)
+	if err != nil {
+		t.Fatalf("extractFunctions() error = %v", err)
+	}
+	if len(functions) != 0 {
+		t.Errorf("expected 0 functions, got %d", len(functions))
+	}
+}
+
+func TestComputeCoverage(t *testing.T) {
+	profile := map[string][]coverSegment{
+		"example.com/mod/pkg/calc.go": {
+			{StartLine: 3, EndLine: 5, Statements: 4, Count: 3},
+			{StartLine: 6, EndLine: 8, Statements: 2, Count: 0},
+			{StartLine: 10, EndLine: 12, Statements: 5, Count: 0},
+		},
+		"example.com/mod/pkg/util.go": {
+			{StartLine: 7, EndLine: 9, Statements: 1, Count: 0},
+		},
+	}
+
+	functions := []functionRange{
+		{File: "pkg/calc.go", StartLine: 3, EndLine: 5},
+		{File: "pkg/util.go", StartLine: 7, EndLine: 9},
+		{File: "pkg/calc.go", StartLine: 5, EndLine: 11},
+		{File: "pkg/missing.go", StartLine: 1, EndLine: 3},
+	}
+
+	results := computeCoverage(profile, functions)
+
+	if len(results) != 4 {
+		t.Fatalf("computeCoverage() returned %d results, want 4", len(results))
+	}
+
+	if results[0].Coverage != 100.0 {
+		t.Errorf("calc.go lines 3-5 coverage = %.1f, want 100.0 (4/4 covered)", results[0].Coverage)
+	}
+
+	if results[1].Coverage != 0.0 {
+		t.Errorf("util.go lines 7-9 coverage = %.1f, want 0.0 (0/1 covered)", results[1].Coverage)
+	}
+
+	want := 400.0 / 11.0
+	if math.Abs(results[2].Coverage-want) > 0.01 {
+		t.Errorf("calc.go lines 5-11 coverage = %.2f, want ~%.2f (4/11 covered)", results[2].Coverage, want)
+	}
+
+	if results[3].Coverage != 0.0 {
+		t.Errorf("missing.go coverage = %.1f, want 0.0 (no matching file)", results[3].Coverage)
+	}
+}
+
+func TestSegmentsForFile(t *testing.T) {
+	profile := map[string][]coverSegment{
+		"github.com/mfenderov/gocrap/analyzer.go": {
+			{StartLine: 10, EndLine: 15, Statements: 3, Count: 2},
+		},
+		"other.com/pkg/test.go": {
+			{StartLine: 1, EndLine: 3, Statements: 1, Count: 1},
+		},
+	}
+
+	tests := []struct {
+		name    string
+		file    string
+		wantLen int
+	}{
+		{"exact match", "analyzer.go", 1},
+		{"suffix match with prefix", "gocrap/analyzer.go", 1},
+		{"no match", "unknown.go", 0},
+		{"match other file", "test.go", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := len(segmentsForFile(profile, tt.file)); got != tt.wantLen {
+				t.Errorf("segmentsForFile(_, %q) = %d segments, want %d", tt.file, got, tt.wantLen)
+			}
+		})
 	}
 }

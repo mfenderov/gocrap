@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -24,6 +23,7 @@ type options struct {
 	coverprofile string
 	max          float64
 	verbose      bool
+	json         bool
 	exclude      []string
 	paths        []string
 }
@@ -38,6 +38,7 @@ func parseFlags() options {
 	flag.StringVar(coverprofile, "coverprofile", "", "path to Go coverage profile (from go test -coverprofile)")
 	max := flag.Float64("max", 0, "max allowed CRAP score — show violations and exit 1 if any exceed")
 	verbose := flag.Bool("v", false, "show all functions, not just violations")
+	json := flag.Bool("json", false, "output results as JSON")
 	var exclude stringSlice
 	flag.Var(&exclude, "exclude", "exclude files matching glob pattern (can be repeated)")
 	flag.Parse()
@@ -57,6 +58,7 @@ func parseFlags() options {
 		coverprofile: *coverprofile,
 		max:          *max,
 		verbose:      *verbose,
+		json:         *json,
 		exclude:      exclude,
 		paths:        paths,
 	}
@@ -75,20 +77,34 @@ func run(opts options, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	printReport(stdout, results, opts.max, opts.verbose)
+	printReport(stdout, results, opts.max, opts.verbose, opts.json)
 	return checkMax(stderr, results, opts.max)
 }
 
 func analyze(opts options) ([]FuncResult, error) {
 	compStats := analyzeComplexity(opts.paths)
 
-	covStats, err := analyzeCoverage(opts.coverprofile)
+	profile, err := readProfile(opts.coverprofile)
 	if err != nil {
 		return nil, err
 	}
 
-	modulePrefix := detectModulePrefix(covStats, compStats)
-	results := joinResults(compStats, covStats, modulePrefix)
+	sourceFiles, err := findSourceFiles(opts.paths)
+	if err != nil {
+		return nil, err
+	}
+
+	var functions []functionRange
+	for _, f := range sourceFiles {
+		fns, err := extractFunctions(f)
+		if err != nil {
+			return nil, err
+		}
+		functions = append(functions, fns...)
+	}
+
+	covStats := computeCoverage(profile, functions)
+	results := joinResults(compStats, covStats)
 
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].CRAP > results[j].CRAP
@@ -97,7 +113,11 @@ func analyze(opts options) ([]FuncResult, error) {
 	return filterExcluded(results, opts.exclude), nil
 }
 
-func printReport(w io.Writer, results []FuncResult, max float64, verbose bool) {
+func printReport(w io.Writer, results []FuncResult, max float64, verbose, json bool) {
+	if json {
+		fmt.Fprint(w, formatResultsJSON(results, max))
+		return
+	}
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No CRAP found.")
 		return
@@ -135,34 +155,4 @@ func analyzeComplexity(paths []string) []complexityStat {
 		}
 	}
 	return result
-}
-
-func analyzeCoverage(coverprofile string) ([]coverageStat, error) {
-	output, err := exec.Command("go", "tool", "cover", "-func", coverprofile).Output()
-	if err != nil {
-		return nil, fmt.Errorf("running go tool cover -func: %w", err)
-	}
-	return parseCoverFunc(string(output))
-}
-
-func detectModulePrefix(covStats []coverageStat, compStats []complexityStat) string {
-	if len(covStats) == 0 || len(compStats) == 0 {
-		return ""
-	}
-	for _, comp := range compStats {
-		if prefix, ok := findPrefix(comp.File, covStats); ok {
-			return prefix
-		}
-	}
-	return ""
-}
-
-func findPrefix(compFile string, covStats []coverageStat) (string, bool) {
-	baseName := strings.TrimPrefix(compFile, "./")
-	for _, cov := range covStats {
-		if strings.HasSuffix(cov.File, baseName) {
-			return strings.TrimSuffix(cov.File, baseName), true
-		}
-	}
-	return "", false
 }
