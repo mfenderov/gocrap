@@ -24,14 +24,9 @@ func extractFunctions(filePath string) ([]functionRange, error) {
 	}
 
 	var functions []functionRange
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !isFuncDecl(ok, fn) {
-			continue
-		}
-		name := funcName(fn)
+	for _, fn := range funcDecls(file) {
 		functions = append(functions, functionRange{
-			Name:      name,
+			Name:      funcName(fn),
 			File:      filePath,
 			StartLine: fset.Position(fn.Pos()).Line,
 			EndLine:   fset.Position(fn.End()).Line,
@@ -40,8 +35,14 @@ func extractFunctions(filePath string) ([]functionRange, error) {
 	return functions, nil
 }
 
-func isFuncDecl(ok bool, fn *ast.FuncDecl) bool {
-	return ok && fn.Body != nil
+func funcDecls(file *ast.File) []*ast.FuncDecl {
+	var decls []*ast.FuncDecl
+	for _, d := range file.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Body != nil {
+			decls = append(decls, fn)
+		}
+	}
+	return decls
 }
 
 func funcName(fn *ast.FuncDecl) string {

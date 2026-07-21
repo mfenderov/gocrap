@@ -559,3 +559,30 @@ func TestEffectiveMax(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractFunctions_SkipsNonFuncAndBodyless(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "extern.go")
+	code := `package main
+
+var unused = 1
+
+func external()
+
+func WithBody() {}
+`
+	if err := os.WriteFile(src, []byte(code), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	functions, err := extractFunctions(src)
+	if err != nil {
+		t.Fatalf("extractFunctions() error = %v", err)
+	}
+	if len(functions) != 1 {
+		t.Fatalf("extractFunctions() returned %d functions, want 1 (var and bodyless decl skipped)", len(functions))
+	}
+	if functions[0].Name != "WithBody" {
+		t.Errorf("functions[0].Name = %q, want WithBody", functions[0].Name)
+	}
+}

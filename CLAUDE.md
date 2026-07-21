@@ -40,7 +40,7 @@ Flat single-package (`main`) CLI with three source files:
 - **`analyzer.go`** — Core domain: types, CRAP formula, result joining (`joinResults` → `lookupCov`), filtering (`filterExcluded`), summarizing, path normalization
 - **`coverage.go`** — Coverage parsing (`parseCoverProfile` → `parseCoverSegment` → `parsePos`), computation (`computeCoverage` → `functionCoverage` → `countStmts`), segment matching (`segmentsForFile` → `findSegmentsBySuffix`)
 - **`format.go`** — Output formatting: text (`formatResults` → `formatRow` → `writeHeader`) and JSON (`formatResultsJSON` → `isFailing`)
-- **`functions.go`** — Source file discovery (`findSourceFiles` → `walkSourceDir` → `walkVisitor`), AST function extraction (`extractFunctions` → `isFuncDecl`), aggregated extraction (`extractAllFunctions`)
+- **`functions.go`** — Source file discovery (`findSourceFiles` → `walkSourceDir` → `walkVisitor`), AST function extraction (`extractFunctions`), aggregated extraction (`extractAllFunctions`)
 - **`main_test.go`** / **`analyzer_test.go`** — Integration and unit tests
 
 ### Data pipeline
