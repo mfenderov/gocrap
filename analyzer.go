@@ -135,3 +135,38 @@ func countExceeding(results []FuncResult, max float64) int {
 func normalizePath(path string) string {
 	return strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
 }
+
+// bestPathMatch picks the best candidate for target among candidates.
+// It normalizes candidates and target internally (via normalizePath).
+// Exact normalized equality wins; else the longest suffix-matching
+// candidate (most specific path); ties broken lexicographically.
+// Returns the candidate in its original (non-normalized) form.
+func bestPathMatch(candidates []string, target string) (string, bool) {
+	normTarget := normalizePath(target)
+	best := ""
+	bestNorm := ""
+	for _, c := range candidates {
+		normC := normalizePath(c)
+		if normC == normTarget {
+			return c, true
+		}
+		if betterSuffixMatch(normC, c, bestNorm, best, normTarget) {
+			best = c
+			bestNorm = normC
+		}
+	}
+	return best, best != ""
+}
+
+// betterSuffixMatch reports whether c beats best as a suffix match for
+// normTarget (already normalized). normC is the normalized form of c and
+// bestNorm is the normalized form of best. c must suffix-match normTarget,
+// and wins on greater normalized length (more specific path); ties broken
+// lexicographically on the original (non-normalized) candidate strings.
+func betterSuffixMatch(normC, c, bestNorm, best, normTarget string) bool {
+	if !strings.HasSuffix(normC, "/"+normTarget) {
+		return false
+	}
+	return len(normC) > len(bestNorm) ||
+		(len(normC) == len(bestNorm) && c < best)
+}

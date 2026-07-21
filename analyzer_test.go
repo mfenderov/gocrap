@@ -437,3 +437,35 @@ func TestSegmentsForFile(t *testing.T) {
 		})
 	}
 }
+
+func TestBestPathMatch(t *testing.T) {
+	tests := []struct {
+		name       string
+		candidates []string
+		target     string
+		want       string
+		wantFound  bool
+	}{
+		{"exact match wins over longer suffix", []string{"github.com/mod/pkg/a.go", "pkg/a.go"}, "pkg/a.go", "pkg/a.go", true},
+		{"exact match regardless of position", []string{"zz/pkg/a.go", "pkg/a.go"}, "pkg/a.go", "pkg/a.go", true},
+		{"longest suffix wins", []string{"x/pkg/a.go", "deep/x/pkg/a.go"}, "pkg/a.go", "deep/x/pkg/a.go", true},
+		{"lexicographic tie-break", []string{"b/pkg/a.go", "a/pkg/a.go"}, "pkg/a.go", "a/pkg/a.go", true},
+		{"no match", []string{"other/b.go"}, "pkg/a.go", "", false},
+		{"empty candidates", nil, "pkg/a.go", "", false},
+		{"normalizes ./ prefix in target", []string{"mod/pkg/a.go"}, "./pkg/a.go", "mod/pkg/a.go", true},
+		{"windows backslash normalization", []string{"pkg\\a.go"}, "pkg/a.go", "pkg\\a.go", true},
+		{"prefix mismatch does not match", []string{"prefix_a.go"}, "a.go", "", false},
+		{"full component rule requires slash", []string{"bar.go"}, "foo/bar.go", "", false},
+		{"exact match via candidate normalization", []string{"./pkg/a.go"}, "pkg/a.go", "./pkg/a.go", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := bestPathMatch(tt.candidates, tt.target)
+			if found != tt.wantFound || got != tt.want {
+				t.Errorf("bestPathMatch(%v, %q) = (%q, %v), want (%q, %v)",
+					tt.candidates, tt.target, got, found, tt.want, tt.wantFound)
+			}
+		})
+	}
+}
