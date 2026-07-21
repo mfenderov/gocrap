@@ -469,3 +469,55 @@ func TestBestPathMatch(t *testing.T) {
 		})
 	}
 }
+
+func TestLookupCov(t *testing.T) {
+	byLine := indexByLine([]coverageStat{
+		{File: "a/pkg/x.go", Line: 10, Coverage: 50},
+		{File: "b/pkg/x.go", Line: 10, Coverage: 80},
+		{File: "pkg/x.go", Line: 10, Coverage: 100},
+		{File: "other.go", Line: 20, Coverage: 90},
+	})
+
+	tests := []struct {
+		name      string
+		file      string
+		line      int
+		wantCov   float64
+		wantFound bool
+	}{
+		{"exact wins", "pkg/x.go", 10, 100, true},
+		{"longest suffix wins", "x.go", 10, 50, true},
+		{"missing line", "pkg/x.go", 99, 0, false},
+		{"no file match", "zzz.go", 10, 0, false},
+		{"wrong line", "other.go", 10, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, found := lookupCov(byLine, tt.file, tt.line)
+			if found != tt.wantFound || math.Abs(got.Coverage-tt.wantCov) > 0.01 {
+				t.Errorf("lookupCov(%q, %d) = (%.1f, %v), want (%.1f, %v)",
+					tt.file, tt.line, got.Coverage, found, tt.wantCov, tt.wantFound)
+			}
+		})
+	}
+}
+
+func TestJoinResults_AmbiguousSuffixDeterministic(t *testing.T) {
+	complexity := []complexityStat{
+		{FuncName: "F", File: "pkg/a.go", Line: 10, Complexity: 1},
+	}
+	coverage := []coverageStat{
+		{File: "zzz/pkg/a.go", Line: 10, Coverage: 50},
+		{File: "aaa/pkg/a.go", Line: 10, Coverage: 80},
+	}
+
+	// Equal-length suffix matches: lexicographic rule must pick aaa every
+	// run regardless of internal map iteration order.
+	for i := 0; i < 20; i++ {
+		results := joinResults(complexity, coverage)
+		if results[0].Coverage != 80 {
+			t.Fatalf("run %d: coverage = %.1f, want 80 (deterministic pick)", i, results[0].Coverage)
+		}
+	}
+}

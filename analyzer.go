@@ -28,11 +28,6 @@ type coverageStat struct {
 	Coverage float64
 }
 
-type covKey struct {
-	file string
-	line int
-}
-
 func CRAPScore(complexity int, coveragePct float64) float64 {
 	comp := float64(complexity)
 	uncov := 1.0 - coveragePct/100.0
@@ -40,43 +35,56 @@ func CRAPScore(complexity int, coveragePct float64) float64 {
 }
 
 func joinResults(complexity []complexityStat, coverage []coverageStat) []FuncResult {
-	covMap := make(map[covKey]coverageStat, len(coverage))
-	for _, c := range coverage {
-		covMap[covKey{file: c.File, line: c.Line}] = c
-	}
+	byLine := indexByLine(coverage)
 
 	var results []FuncResult
 	for _, comp := range complexity {
-		cov, found := lookupCov(covMap, comp.File, comp.Line)
+		cov, found := lookupCov(byLine, comp.File, comp.Line)
 		var coveragePct float64
 		if found {
 			coveragePct = cov.Coverage
 		}
-		crapScore := CRAPScore(comp.Complexity, coveragePct)
 		results = append(results, FuncResult{
 			FuncName:   comp.FuncName,
 			File:       comp.File,
 			Line:       comp.Line,
 			Complexity: comp.Complexity,
 			Coverage:   coveragePct,
-			CRAP:       crapScore,
+			CRAP:       CRAPScore(comp.Complexity, coveragePct),
 		})
 	}
 	return results
 }
 
-func lookupCov(covMap map[covKey]coverageStat, file string, line int) (coverageStat, bool) {
-	normFile := normalizePath(file)
-	for k, c := range covMap {
-		if k.line != line {
-			continue
+// indexByLine groups coverage stats by declaration line, keyed by file
+// within each line bucket.
+func indexByLine(coverage []coverageStat) map[int]map[string]coverageStat {
+	byLine := make(map[int]map[string]coverageStat, len(coverage))
+	for _, c := range coverage {
+		if byLine[c.Line] == nil {
+			byLine[c.Line] = map[string]coverageStat{}
 		}
-		normK := normalizePath(k.file)
-		if normK == normFile || strings.HasSuffix(normK, "/"+normFile) {
-			return c, true
-		}
+		byLine[c.Line][c.File] = c
 	}
-	return coverageStat{}, false
+	return byLine
+}
+
+// lookupCov finds coverage for (file, line) via the line index; ambiguous
+// file matches resolve deterministically via bestPathMatch.
+func lookupCov(byLine map[int]map[string]coverageStat, file string, line int) (coverageStat, bool) {
+	stats := byLine[line]
+	if len(stats) == 0 {
+		return coverageStat{}, false
+	}
+	paths := make([]string, 0, len(stats))
+	for p := range stats {
+		paths = append(paths, p)
+	}
+	best, found := bestPathMatch(paths, file)
+	if !found {
+		return coverageStat{}, false
+	}
+	return stats[best], true
 }
 
 func filterExcluded(results []FuncResult, exclude []string) []FuncResult {
