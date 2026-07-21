@@ -178,11 +178,17 @@ func segmentsForFile(profile map[string][]coverSegment, file string) []coverSegm
 	return findSegmentsBySuffix(profile, normalized)
 }
 
+// findSegmentsBySuffix resolves normalized against all profile keys via
+// bestPathMatch (exact > longest suffix > lexicographic), making the
+// result independent of map iteration order.
 func findSegmentsBySuffix(profile map[string][]coverSegment, normalized string) []coverSegment {
-	for candidate, segments := range profile {
-		if strings.HasSuffix(candidate, "/"+normalized) || candidate == normalized {
-			return segments
-		}
+	candidates := make([]string, 0, len(profile))
+	for candidate := range profile {
+		candidates = append(candidates, candidate)
 	}
-	return nil
+	best, found := bestPathMatch(candidates, normalized)
+	if !found {
+		return nil
+	}
+	return profile[best]
 }

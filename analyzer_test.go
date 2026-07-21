@@ -521,3 +521,21 @@ func TestJoinResults_AmbiguousSuffixDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestSegmentsForFile_AmbiguousSuffixDeterministic(t *testing.T) {
+	mkProfile := func() map[string][]coverSegment {
+		return map[string][]coverSegment{
+			"zzz.com/mod/pkg/a.go": {{StartLine: 1, EndLine: 2, Statements: 1, Count: 1}},
+			"aaa.com/mod/pkg/a.go": {{StartLine: 1, EndLine: 2, Statements: 9, Count: 1}},
+		}
+	}
+
+	// Equal-length candidates: lexicographic rule must pick aaa.com every
+	// run regardless of map iteration order.
+	for i := 0; i < 20; i++ {
+		segs := segmentsForFile(mkProfile(), "pkg/a.go")
+		if len(segs) != 1 || segs[0].Statements != 9 {
+			t.Fatalf("run %d: got %+v, want aaa.com segment (deterministic pick)", i, segs)
+		}
+	}
+}
