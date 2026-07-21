@@ -114,10 +114,7 @@ func printReport(w io.Writer, results []FuncResult, max float64, verbose, json b
 		return
 	}
 	fmt.Fprint(w, formatResults(results, max, verbose))
-	threshold := max
-	if threshold <= 0 {
-		threshold = 30
-	}
+	threshold := effectiveMax(max)
 	avg, total, exceeding := summarize(results, threshold)
 	fmt.Fprintf(w, "\nAverage CRAP: %.1f | Functions: %d | Above %.0f: %d\n", avg, total, threshold, exceeding)
 }

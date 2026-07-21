@@ -85,10 +85,7 @@ func formatResultsJSON(results []FuncResult, max float64) string {
 		}
 	}
 
-	threshold := max
-	if threshold <= 0 {
-		threshold = 30
-	}
+	threshold := effectiveMax(max)
 	avg, total, exceeding := summarize(results, threshold)
 	out.Summary = jsonSummary{
 		AverageCRAP:    avg,

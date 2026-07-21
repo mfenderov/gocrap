@@ -539,3 +539,23 @@ func TestSegmentsForFile_AmbiguousSuffixDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestEffectiveMax(t *testing.T) {
+	tests := []struct {
+		name string
+		max  float64
+		want float64
+	}{
+		{"zero defaults to 30", 0, 30},
+		{"negative defaults to 30", -5, 30},
+		{"positive kept", 12, 12},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := effectiveMax(tt.max); got != tt.want {
+				t.Errorf("effectiveMax(%.0f) = %.0f, want %.0f", tt.max, got, tt.want)
+			}
+		})
+	}
+}

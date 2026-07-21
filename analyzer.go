@@ -140,6 +140,15 @@ func countExceeding(results []FuncResult, max float64) int {
 	return count
 }
 
+// effectiveMax returns the summary threshold: max, or the conventional
+// default of 30 when no max is set.
+func effectiveMax(max float64) float64 {
+	if max <= 0 {
+		return 30
+	}
+	return max
+}
+
 func normalizePath(path string) string {
 	return strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
 }
