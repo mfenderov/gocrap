@@ -11,6 +11,9 @@ import (
 	"github.com/fzipp/gocyclo"
 )
 
+// version is set at link time by GoReleaser. Local builds report "dev".
+var version = "dev"
+
 type stringSlice []string
 
 func (s *stringSlice) String() string { return strings.Join(*s, ",") }
@@ -26,11 +29,12 @@ type options struct {
 	json         bool
 	exclude      []string
 	paths        []string
+	showVersion  bool
 }
 
 func main() {
 	opts := parseFlags()
-	os.Exit(run(opts, os.Stdout, os.Stderr))
+	os.Exit(run(version, opts, os.Stdout, os.Stderr))
 }
 
 func parseFlags() options {
@@ -39,6 +43,7 @@ func parseFlags() options {
 	max := flag.Float64("max", 0, "max allowed CRAP score — show violations and exit 1 if any exceed")
 	verbose := flag.Bool("v", false, "show all functions, not just violations")
 	json := flag.Bool("json", false, "output results as JSON")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	var exclude stringSlice
 	flag.Var(&exclude, "exclude", "exclude files matching glob pattern (can be repeated)")
 	flag.Parse()
@@ -61,10 +66,15 @@ func parseFlags() options {
 		json:         *json,
 		exclude:      exclude,
 		paths:        paths,
+		showVersion:  *showVersion,
 	}
 }
 
-func run(opts options, stdout, stderr io.Writer) int {
+func run(version string, opts options, stdout, stderr io.Writer) int {
+	if opts.showVersion {
+		fmt.Fprintln(stdout, version)
+		return 0
+	}
 	if opts.coverprofile == "" {
 		fmt.Fprintln(stderr, "error: -c is required")
 		fmt.Fprintln(stderr, "usage: gocrap -c coverage.out -max 12 ./...")
