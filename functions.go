@@ -129,17 +129,28 @@ func (v *walkVisitor) addFile(path string) error {
 	rel = filepath.ToSlash(rel)
 	if !v.seen[rel] {
 		v.seen[rel] = true
-		*v.files = append(*v.files, rel)
+		*v.files = append(*v.files, path)
 	}
 	return nil
 }
 
+var skipDirs = map[string]bool{
+	"testdata": true,
+	"vendor":   true,
+}
+
+// isSkipDir mirrors gocyclo's walker: skip testdata, vendor, dot-dirs and
+// "_"-prefixed dirs, so both passes see the same source tree. Without this,
+// stale copies under e.g. .worktrees/ pollute the coverage join and produce
+// non-deterministic 0% coverage attribution.
 func isSkipDir(name string) bool {
-	switch name {
-	case ".git", "vendor", "testdata":
+	if skipDirs[name] {
 		return true
 	}
-	return false
+	if name == "." || name == ".." {
+		return false
+	}
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 func isGoSource(entry os.DirEntry) bool {
